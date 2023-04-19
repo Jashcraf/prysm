@@ -269,4 +269,49 @@ def pauli_coefficients(jones):
     c3 = 1j*(jones[...,0,1] - jones[...,1,0])/2
 
     return c0,c1,c2,c3
+
+def jones_adapter(wavefunction,prop_func,*prop_func_args,**prop_func_kwargs):
+    """wrapper for propagation functions to accomodate jones wavefronts
+
+    Parameters
+    ----------
+    wavefunction : numpy.ndarray
+        generally complex wavefunction of shape N x M x 2 x 2, where N and M are the spatial dimensions
+        and the last two dimensions hold the jones matrix for each spatial dimension
+    prop_func : function
+        function of the prysm.propagation module
+
+    Returns
+    -------
+    out : numpy.ndarray
+        complex wavefunction propagated using prop_func of the same shape and dtype of wavefunction
+    """
+
+    # Treat Wavefront.func
+    if hasattr(prop_func,'__self__'):
+        func = getattr(prop_func.__class__,func.__name__)
+
+    # Treat prysm.propagation.func
+    elif prop_func.__class__.__module__ == 'builtins':
+
+        J00 = wavefunction[...,0,0]
+        J01 = wavefunction[...,0,1]
+        J10 = wavefunction[...,1,0]
+        J11 = wavefunction[...,1,1]
+        tmp = []
+        for E in [J00, J01, J10, J11]:
+            ret = prop_func(E, *prop_func_args, **prop_func_kwargs)
+            tmp.append(ret)
     
+    # one path, return list (no extra copies/allocs)
+    # return tmp
+
+    # different path, pack it back in (waste copies)
+    out = np.empty((*tmp[0].shape,2,2), tmp[0].dtype)
+    out[...,0,0] = tmp[0]
+    out[...,0,1] = tmp[1]
+    out[...,1,0] = tmp[2]
+    out[...,1,1] = tmp[3]
+
+    # return in original format
+    return out
