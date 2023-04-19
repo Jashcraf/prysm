@@ -1,6 +1,33 @@
 "Jones and Mueller Calculus"
 from prysm.mathops import np
 from prysm.conf import config
+from prysm.propagation import Wavefront
+import functools
+
+def broadcast_kron(a,b):
+    """broadcasted kronecker product of two N,M,...,2,2 arrays. Used for jones -> mueller conversion
+    In the unbroadcasted case, this output looks like
+
+    out = [a[0,0]*b,a[0,1]*b]
+          [a[1,0]*b,a[1,1]*b]
+
+    where out is a N,M,...,4,4 array. I wrote this to work for generally shaped kronecker products where the matrix
+    is contained in the last two axes, but it's only tested for the Nx2x2 case
+
+    Parameters
+    ----------
+    a : numpy.ndarray
+        N,M,...,2,2 array used to scale b in kronecker product
+    b : numpy.ndarray
+        N,M,...,2,2 array used to form block matrices in kronecker product
+
+    Returns
+    -------
+    out
+        N,M,...,4,4 array
+    """
+
+    return np.einsum('...ik,...jl',a,b).reshape([*a.shape[:-2],int(a.shape[-2]*b.shape[-2]),int(a.shape[-1]*b.shape[-1])])
 
 def _empty_jones(shape=None):
     """Returns an empty array to populate with jones matrix elements.
@@ -200,8 +227,12 @@ def jones_to_mueller(jones):
                   [1,0,0,-1],
                   [0,1,1,0],
                   [0,1j,-1j,0]])/np.sqrt(2)
-
-    jprod = np.kron(np.conj(jones),jones)
+    
+    if jones.ndim == 2:
+        jprod = np.kron(np.conj(jones),jones)
+    else:
+        # broadcasted kronecker product with einsum
+        jprod = broadcast_kron(np.conj(jones),jones)
     M = np.real(U @ jprod @ np.linalg.inv(U))
 
     return M
@@ -315,3 +346,62 @@ def jones_adapter(wavefunction,prop_func,*prop_func_args,**prop_func_kwargs):
 
     # return in original format
     return out
+
+def jones_decorator(prop_func):
+
+    @functools.wraps(prop_func)
+    def wrapper(*args,**kwargs):
+
+        # sus out what propagation method this is
+        if prop_func.__class__.__module__ == 'builtins':
+            
+            # this is a function
+            wavefunction = args[0]
+            other_args = args[1:]
+
+            J00 = wavefunction[...,0,0]
+            J01 = wavefunction[...,0,1]
+            J10 = wavefunction[...,1,0]
+            J11 = wavefunction[...,1,1]
+            tmp = []
+            for E in [J00, J01, J10, J11]:
+                ret = prop_func(E, *other_args, **kwargs)
+                tmp.append(ret)
+            
+            out = np.empty([*ret.shape,2,2],dtype=config.precision_complex)
+            out[...,0,0] = tmp[0]
+            out[...,0,1] = tmp[1]
+            out[...,1,0] = tmp[2]
+            out[...,1,1] = tmp[3]
+
+        elif hasattr(prop_func,'__self__'):
+
+            # this is a method of Wavefront
+            func = getattr(prop_func.__class__,func.__name__)
+            wavefunction = prop_func.__self__.data
+
+            # this is a function
+            J00 = wavefunction[...,0,0]
+            J01 = wavefunction[...,0,1]
+            J10 = wavefunction[...,1,0]
+            J11 = wavefunction[...,1,1]
+            tmp = []
+            for E in [J00, J01, J10, J11]:
+                ret = func(E, *args, **kwargs)
+                tmp.append(ret)
+
+            # pack it back into a wavefront
+            out[...,0,0] = tmp[0]
+            out[...,0,1] = tmp[1]
+            out[...,1,0] = tmp[2]
+            out[...,1,1] = tmp[3]
+
+            out = Wavefront(out,prop_func.__self__wavelength,prop_func.__self__.dx)
+        
+        return out
+    
+    return wrapper
+
+
+
+

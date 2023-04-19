@@ -1,5 +1,6 @@
 import numpy as np
 import prysm.experimental.polarization as pol
+import pytest
 
 def test_rotation_matrix():
 
@@ -64,6 +65,22 @@ def test_jones_to_mueller():
                              [0,1,0,0]])/2
 
     np.testing.assert_allclose(mueller_circ,mueller_test,atol=1e-5)
+
+def test_jones_to_mueller_broadcast():
+
+    ntrials = 10
+    qwp = pol.quarter_wave_plate()
+    out_ref = np.empty([ntrials,4,4])
+
+    for i in range(ntrials):
+        out_ref[i] = pol.jones_to_mueller(qwp)
+
+    qwp = np.broadcast_to(qwp,[ntrials,*qwp.shape])
+    out_broad = pol.jones_to_mueller(qwp)
+
+    np.testing.assert_allclose(out_broad,out_ref)
+
+    
 
 def test_pauli_spin_matrix():
 
@@ -187,10 +204,88 @@ def test_jones_adapter_angular_spectrum():
 
     np.testing.assert_allclose((jones_prop[...,0,0],jones_prop[...,1,1]),(ref_prop,ref_prop))
 
-def test_jones_adapter_methods():
-    """test jones adapter on propagation methods of the Wavefront class
-    """
-    pass
+# @pytest.mark.skip(reason='working on other tests')
+def test_prop_with_jones_to_mueller():
 
+    from prysm.coordinates import make_xy_grid, cart_to_polar
+    from prysm.geometry import circle
+    from prysm.propagation import focus
+    from prysm.polynomials import hopkins
+    from prysm.experimental.polarization import jones_adapter,jones_to_mueller
+    from prysm.conf import config
 
+    N,M = 256,256
+    wvl = 1e-6
+    Q = 2
 
+    # set up a wave function for the on-diagonals
+    x,y = make_xy_grid(N,diameter=2)
+    r,t = cart_to_polar(x,y)
+    rho = r/5
+    phi = hopkins(0,4,0,rho,t,1)
+    A = circle(1,r)
+
+    wavefunction = A#*np.exp(1j*2*np.pi/wvl*phi)
+
+    # Set up jones data, numpy.ndarray of shape N,M,2,2
+    # This is essentially a non-polarizing system
+    jones = np.zeros([N,M,2,2],dtype=config.precision_complex) # this represents our "wavefunction"
+    jones[...,0,0] = wavefunction
+    jones[...,1,1] = wavefunction
+
+    # test focus
+    jones_focus = jones_adapter(jones,focus,Q)
+    jshape = jones_focus.shape[0]/2
+    cut = 64
+    ref_focus = np.abs(focus(wavefunction,Q))**2
+    ref_focus /= np.max(np.abs(ref_focus))
+
+    PSM = jones_to_mueller(jones_focus)
+    PSM /= np.max(np.abs(PSM[...,0,0]))
+
+    np.testing.assert_allclose(ref_focus,PSM[...,0,0])
+
+def test_jones_decorator():
+
+    from prysm.coordinates import make_xy_grid, cart_to_polar
+    from prysm.geometry import circle
+    from prysm.propagation import focus
+    from prysm.polynomials import hopkins
+    from prysm.experimental.polarization import jones_adapter,jones_to_mueller,jones_decorator
+    from prysm.conf import config
+    import matplotlib.pyplot as plt
+
+    N,M = 256,256
+    wvl = 1e-6
+    Q = 2
+
+    # set up a wave function for the on-diagonals
+    x,y = make_xy_grid(N,diameter=2)
+    r,t = cart_to_polar(x,y)
+    rho = r/5
+    phi = hopkins(0,4,0,rho,t,1)
+    A = circle(1,r)
+
+    wavefunction = A#*np.exp(1j*2*np.pi/wvl*phi)
+
+    # Set up jones data, numpy.ndarray of shape N,M,2,2
+    # This is essentially a non-polarizing system
+    jones = np.zeros([N,M,2,2],dtype=config.precision_complex) # this represents our "wavefunction"
+    jones[...,0,0] = wavefunction
+    jones[...,1,1] = wavefunction
+
+    # test focus
+    jfocus = jones_decorator(focus)
+    jones_focus = jfocus(jones,Q)
+    ref_focus = focus(wavefunction,Q)
+
+    plt.figure()
+    plt.subplot(121)
+    plt.imshow(np.abs(jones_focus[...,0,0]))
+    plt.colorbar()
+    plt.subplot(122)
+    plt.imshow(np.abs(ref_focus))
+    plt.colorbar()
+    plt.show()
+
+    np.testing.assert_allclose(ref_focus,jones_focus[...,0,0])
