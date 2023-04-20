@@ -245,7 +245,7 @@ def test_prop_with_jones_to_mueller():
 
     np.testing.assert_allclose(ref_focus,PSM[...,0,0])
 
-def test_jones_decorator():
+def test_jones_decorator_function():
 
     from prysm.coordinates import make_xy_grid, cart_to_polar
     from prysm.geometry import circle
@@ -253,7 +253,6 @@ def test_jones_decorator():
     from prysm.polynomials import hopkins
     from prysm.experimental.polarization import jones_adapter,jones_to_mueller,jones_decorator
     from prysm.conf import config
-    import matplotlib.pyplot as plt
 
     N,M = 256,256
     wvl = 1e-6
@@ -279,13 +278,39 @@ def test_jones_decorator():
     jones_focus = jfocus(jones,Q)
     ref_focus = focus(wavefunction,Q)
 
-    plt.figure()
-    plt.subplot(121)
-    plt.imshow(np.abs(jones_focus[...,0,0]))
-    plt.colorbar()
-    plt.subplot(122)
-    plt.imshow(np.abs(ref_focus))
-    plt.colorbar()
-    plt.show()
+    np.testing.assert_allclose(ref_focus,jones_focus[...,0,0])
+
+def test_jones_decorator_method():
+
+    from prysm.coordinates import make_xy_grid, cart_to_polar
+    from prysm.geometry import circle
+    from prysm.propagation import Wavefront
+    from prysm.polynomials import hopkins
+    from prysm.experimental.polarization import jones_adapter,jones_to_mueller,jones_decorator
+    from prysm.conf import config
+
+    N,M = 256,256
+    wvl = 1e-6
+    Q = 2
+
+    # set up a wave function for the on-diagonals
+    x,y = make_xy_grid(N,diameter=2)
+    r,t = cart_to_polar(x,y)
+    rho = r/5
+    phi = hopkins(0,4,0,rho,t,1)
+    A = circle(1,r)
+
+    wavefunction = A#*np.exp(1j*2*np.pi/wvl*phi)
+
+    # Set up jones data, numpy.ndarray of shape N,M,2,2
+    # This is essentially a non-polarizing system
+    jones = np.zeros([N,M,2,2],dtype=config.precision_complex) # this represents our "wavefunction"
+    jones[...,0,0] = wavefunction
+    jones[...,1,1] = wavefunction
+
+    # test focus
+    jfocus = jones_decorator(focus)
+    jones_focus = jfocus(jones,Q)
+    ref_focus = focus(wavefunction,Q)
 
     np.testing.assert_allclose(ref_focus,jones_focus[...,0,0])
