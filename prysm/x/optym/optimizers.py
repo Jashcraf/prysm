@@ -4,6 +4,7 @@ import warnings
 from scipy.optimize import _lbfgsb
 
 from prysm.mathops import np
+import numpy as truenp
 
 
 def runN(optimizer, N):
@@ -601,25 +602,25 @@ class F77LBFGSB:
         # create the work arrays Fortran needs
         fint_dtype = _lbfgsb.types.intvar.dtype
 #         ffloat_dtype = x0.dtype  maybe can uncomment this someday, but probably not.
-        ffloat_dtype = np.float64
+        ffloat_dtype = truenp.float64
 
         # todo: f77 code explodes for f32 dtype?
         if lower_bounds is None:
-            lower_bounds = np.full(self.n, -np.Inf, dtype=ffloat_dtype)
+            lower_bounds = truenp.full(self.n, -truenp.Inf, dtype=ffloat_dtype)
 
         if upper_bounds is None:
-            upper_bounds = np.full(self.n, np.Inf, dtype=ffloat_dtype)
+            upper_bounds = truenp.full(self.n, truenp.Inf, dtype=ffloat_dtype)
 
         # nbd is an array of integers for Fortran
         #         nbd(i)=0 if x(i) is unbounded,
         #                1 if x(i) has only a lower bound,
         #                2 if x(i) has both lower and upper bounds, and
         #                3 if x(i) has only an upper bound.
-        nbd = np.zeros(self.n, dtype=fint_dtype)
+        nbd = truenp.zeros(self.n, dtype=fint_dtype)
         self.l = lower_bounds  # NOQA
         self.u = upper_bounds
-        finite_lower_bound = np.isfinite(self.l)
-        finite_upper_bound = np.isfinite(self.u)
+        finite_lower_bound = truenp.isfinite(self.l)
+        finite_upper_bound = truenp.isfinite(self.u)
         # unbounded case handled in init as zeros
         lower_but_not_upper_bound = finite_lower_bound & ~finite_upper_bound
         upper_but_not_lower_bound = finite_upper_bound & ~finite_lower_bound
@@ -632,17 +633,17 @@ class F77LBFGSB:
         # much less complicated initializations
         m, n = self.m, self.n
         self.x = x0.copy()
-        self.f = np.array([0], dtype=ffloat_dtype)
-        self.g = np.zeros([self.n], dtype=ffloat_dtype)
+        self.f = truenp.array([0], dtype=ffloat_dtype)
+        self.g = truenp.zeros([self.n], dtype=ffloat_dtype)
         # see lbfgsb.f for this size
         # error in the docstring, see line 240 to 252
-        self.wa = np.zeros(2 * m * n + 11 * m ** 2 + 5 * n + 8 * m, dtype=ffloat_dtype)
-        self.iwa = np.zeros(3*n, dtype=fint_dtype)
-        self.task = np.zeros(1, dtype='S60')  # S60 = <= 60 character wide byte array
-        self.csave = np.zeros(1, dtype='S60')
-        self.lsave = np.zeros(4, dtype=fint_dtype)
-        self.isave = np.zeros(44, dtype=fint_dtype)
-        self.dsave = np.zeros(29, dtype=ffloat_dtype)
+        self.wa = truenp.zeros(2 * m * n + 11 * m ** 2 + 5 * n + 8 * m, dtype=ffloat_dtype)
+        self.iwa = truenp.zeros(3*n, dtype=fint_dtype)
+        self.task = truenp.zeros(1, dtype='S60')  # S60 = <= 60 character wide byte array
+        self.csave = truenp.zeros(1, dtype='S60')
+        self.lsave = truenp.zeros(4, dtype=fint_dtype)
+        self.isave = truenp.zeros(44, dtype=fint_dtype)
+        self.dsave = truenp.zeros(29, dtype=ffloat_dtype)
         self.task[:] = 'START'
 
         self.iter = 0
@@ -692,6 +693,9 @@ class F77LBFGSB:
             task = self.task.tobytes().strip(b'\x00').strip()
             if task.startswith(b'FG'):
                 f, g = self.fg(self.x)
+                if hasattr(g, '__iter__'):
+                    f = float(f)
+                    g = g.get()
                 if g.ndim != 1:
                     g = g.ravel()
 
