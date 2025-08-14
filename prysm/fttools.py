@@ -231,6 +231,7 @@ class MatrixDFTExecutor:
         if isinstance(Q, (float, int)):
             Q = (Q, Q)
         elif not isinstance(Q, tuple):
+            Q = (Q, Q) # otherwise cupy sees Q as a non-iterable
             Q = tuple(float(q) for q in Q)  # float for dtype stabilization: cupy
 
         if not isinstance(samples_in, Iterable):
